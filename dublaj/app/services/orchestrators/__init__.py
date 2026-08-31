@@ -1,0 +1,3 @@
+"""
+Orchestrators package — pipeline strategies.
+"""

@@ -1,0 +1,9 @@
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir huggingface_hub
+
+WORKDIR /app
+
+COPY docker3/seedvc/download_seedvc.py /app/download_seedvc.py
+
+CMD ["python", "download_seedvc.py"]

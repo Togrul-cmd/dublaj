@@ -1,0 +1,9 @@
+# OmniVoice TTS Server Dependencies
+# cu128: ядра для Blackwell (RTX PRO 6000 / RTX 5090, sm_120)
+torch==2.7.1+cu128
+torchaudio==2.7.1+cu128
+omnivoice
+fastapi
+uvicorn
+soundfile
+pydantic

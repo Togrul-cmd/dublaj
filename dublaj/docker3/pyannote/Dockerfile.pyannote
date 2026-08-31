@@ -1,0 +1,55 @@
+# PyAnnote Speaker Diarization Docker Image
+# Использует pyannote/speaker-diarization-community-1
+
+# CUDA 12.8 — поддержка Blackwell (RTX PRO 6000 / RTX 5090, sm_120)
+FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# System dependencies
+RUN apt-get update -qq && apt-get install -y -qq \
+    ffmpeg \
+    git \
+    git-lfs \
+    curl \
+    libsndfile1 \
+    python3 \
+    python3-pip \
+    > /dev/null 2>&1
+
+# Create symlinks
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# Step 1: Install pyannote.audio with ALL dependencies (pip resolves everything)
+RUN pip install --no-cache-dir \
+    --default-timeout=1800 \
+    pyannote.audio \
+    fastapi \
+    uvicorn[standard] \
+    python-multipart \
+    pydantic \
+    python-dotenv
+
+# Step 2: Force reinstall PyTorch 2.7.1 with CUDA 12.8 (cu128 — Blackwell sm_120)
+RUN pip install --no-cache-dir --force-reinstall \
+    --default-timeout=1800 \
+    torch==2.7.1 \
+    torchaudio==2.7.1 \
+    --extra-index-url https://download.pytorch.org/whl/cu128
+
+# Create models directory
+RUN mkdir -p /models
+
+COPY server_pyannote.py /app/server_pyannote.py
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --retries=5 \
+    CMD curl -f http://localhost:8400/health || exit 1
+
+EXPOSE 8400
+
+CMD ["python", "server_pyannote.py"]

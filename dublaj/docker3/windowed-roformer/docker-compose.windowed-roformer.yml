@@ -1,0 +1,56 @@
+# ============================================
+# Docker Compose — Windowed RoFormer Separator (WSA)
+# ============================================
+# Модель: smulelabs/windowed-roformer (mbr-win10-sink8.ckpt)
+#   Быстрая альтернатива dublaj-audio-separator (8300):
+#   92% SDR при 44.5x меньше FLOPs.
+#
+# Использование:
+#   cd ~/dublaj/docker3/windowed-roformer
+#   docker compose -f docker-compose.windowed-roformer.yml up -d --build
+#
+# Переключение пайплайна на эту модель (.env):
+#   AUDIO_SEPARATOR_URL=http://localhost:8310
+# ============================================
+
+services:
+  # === Скачивание модели (одноразовое) ===
+  model-downloader:
+    build:
+      context: ../..
+      dockerfile: docker3/windowed-roformer/Dockerfile.downloader
+    container_name: dublaj-windowed-roformer-downloader
+    restart: "no"
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - windowed-roformer-models:/models
+
+  # === Сервер разделения (порт 8310) ===
+  server:
+    build:
+      context: ../..
+      dockerfile: docker3/windowed-roformer/Dockerfile
+    container_name: dublaj-windowed-roformer
+    ports:
+      - "8310:8310"
+    volumes:
+      - windowed-roformer-models:/models
+    environment:
+      - MODEL_PATH=/models/mbr-win10-sink8.ckpt
+      - NVIDIA_VISIBLE_DEVICES=all
+    restart: unless-stopped
+    depends_on:
+      model-downloader:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+# Volume для хранения модели между перезапусками
+volumes:
+  windowed-roformer-models:

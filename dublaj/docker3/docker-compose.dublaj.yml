@@ -1,0 +1,81 @@
+# ============================================
+# Docker Compose — Dublaj API (main.py)
+# ============================================
+# Запускает само приложение FastAPI (main.py):
+#   1. Ставит системные зависимости (ffmpeg)
+#   2. Ставит Python-зависимости из requirements.txt
+#   3. Запускает проект через main.py
+#
+# Порт: 8000 (APP_PORT по умолчанию из .env).
+# Конфликтов нет: остальные сервисы занимают 8100–8710.
+#
+# Внутри контейнера приложение обращается к сервисам
+# (Whisper, OmniVoice, ...) через host.docker.internal,
+# поэтому они должны быть запущены отдельно своими
+# docker-compose файлами.
+#
+# Использование:
+#   docker compose -f docker3/docker-compose.dublaj.yml up -d --build
+#
+# Логи:
+#   docker compose -f docker3/docker-compose.dublaj.yml logs -f
+# ============================================
+
+services:
+  dublaj:
+    # Базовый образ — Python 3.11 (как у остальных сервисов проекта)
+    image: python:3.11-slim
+    container_name: dublaj-api
+    working_dir: /app
+
+    # Монтируем весь проект: код + tmp/ + output/ + .env
+    volumes:
+      - ../:/app
+      # Кэш pip — чтобы повторный старт не качал пакеты заново
+      - dublaj-pip-cache:/root/.cache/pip
+
+    # Публичный порт API. 8000 свободен на хосте
+    # (остальные сервисы на 8100–8710).
+    ports:
+      - "8000:8000"
+
+    # Позволяет контейнеру обращаться к сервисам, опубликованным на хосте,
+    # по имени host.docker.internal (актуально для Docker Desktop / WSL2).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    # Окружение. APP_HOST/APP_PORT уже заданы в .env, но дублируем
+    # для надёжности внутри контейнера.
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - SERVICES_HOST=host.docker.internal
+      - WHISPER_BASE_URL=http://host.docker.internal:8100
+      - OMNIVOICE_URL=http://host.docker.internal:8200
+      - AUDIO_SEPARATOR_URL=http://host.docker.internal:8310
+      - PYANNOTE_URL=http://host.docker.internal:8500
+      - SEEDVC_URL=http://host.docker.internal:8700
+      - LLAMACPP_BASE_URL=http://host.docker.internal:8600
+
+    # 1) системные зависимости (ffmpeg нужен для сборки аудио/видео),
+    # 2) Python-зависимости из requirements.txt,
+    # 3) запуск main.py.
+    command: >
+      sh -c "
+        apt-get update &&
+        apt-get install -y --no-install-recommends ffmpeg &&
+        pip install --no-cache-dir -r requirements.txt &&
+        python main.py
+      "
+
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/api/v1/dubbing/health',timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+# Кэш pip между перезапусками
+volumes:
+  dublaj-pip-cache:

@@ -1,0 +1,70 @@
+# ============================================
+# Docker Compose — Seed-VC Voice Conversion Service (F0 Base)
+# ============================================
+# Два сервиса:
+#   1. downloader — качает модели (запускается один раз)
+#   2. server — FastAPI сервер с F0 Base моделью (200M)
+#
+# Использование:
+#   docker compose -f docker3/seedvc/docker-compose.seedvc.yml up -d
+#
+# API:
+#   POST /voice_convert — voice conversion
+#   GET  /health — проверка статуса
+#   Порт: 8700
+# ============================================
+
+# Shared volume с кэшем HF моделей — сначала downloader, потом server
+x-hf-cache: &hf-cache
+  - seedvc-hf-cache:/root/.cache/huggingface
+
+services:
+  # Сервис 1: Скачивает все модели
+  downloader:
+    build:
+      context: ../..
+      dockerfile: docker3/seedvc/Dockerfile.downloader
+    container_name: dublaj-seedvc-downloader
+    volumes:
+      - seedvc-hf-cache:/root/.cache/huggingface
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - HF_HUB_CACHE=/root/.cache/huggingface
+      - HF_TOKEN=${HF_TOKEN:-}
+    restart: "no"
+
+  # Сервис 2: API сервер (запускается после downloader)
+  server:
+    build:
+      context: ../..
+      dockerfile: docker3/seedvc/Dockerfile
+    container_name: dublaj-seedvc
+    ports:
+      - "8700:8000"
+    volumes:
+      - seedvc-hf-cache:/root/.cache/huggingface
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - HF_HUB_CACHE=/root/.cache/huggingface
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    depends_on:
+      downloader:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+# Volume для хранения моделей между перезапусками
+volumes:
+  seedvc-hf-cache:

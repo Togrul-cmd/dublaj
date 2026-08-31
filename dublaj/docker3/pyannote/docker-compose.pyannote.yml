@@ -1,0 +1,76 @@
+# ============================================
+# Docker Compose — Speaker Diarization (PyAnnote)
+# ============================================
+# Использует pyannote/speaker-diarization-community-1 модель.
+#
+# Требует:
+#   1. HuggingFace токен (для доступа к модели)
+#   2. GPU NVIDIA
+#
+# Использование:
+#   HF_TOKEN=your_token docker compose -f docker3/docker-compose.pyannote.yml up -d --build
+# ============================================
+
+services:
+  # === Скачивание моделей PyAnnote ===
+  model-downloader:
+    build:
+      context: .
+      dockerfile: Dockerfile.pyannote
+    container_name: dublaj-pyannote-model-downloader
+    restart: "no"
+    volumes:
+      - pyannote-models:/root/.cache/huggingface
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+    command:
+      - python3
+      - -c
+      - |
+        import os, sys
+        hub_path = '/root/.cache/huggingface/hub/models--pyannote--speaker-diarization-community-1'
+        if os.path.isdir(hub_path):
+            print('Модель pyannote уже скачана, пропускаем.')
+            sys.exit(0)
+        print('Скачиваем pyannote/speaker-diarization-community-1...')
+        from pyannote.audio import Pipeline
+        token = os.getenv('HF_TOKEN', '')
+        if not token:
+            raise ValueError('HF_TOKEN not set!')
+        pipeline = Pipeline.from_pretrained('pyannote/speaker-diarization-community-1', token=token)
+        print('Модель скачана успешно!')
+
+  # === PyAnnote Diarization Server ===
+  pyannote-diarization:
+    build:
+      context: .
+      dockerfile: Dockerfile.pyannote
+    container_name: dublaj-pyannote-diarization
+    ports:
+      - "8500:8500"
+    environment:
+      - HF_TOKEN=${HF_TOKEN}
+      - PORT=8500
+    volumes:
+      - pyannote-models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    depends_on:
+      model-downloader:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8500/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+volumes:
+  pyannote-models:
+    driver: local

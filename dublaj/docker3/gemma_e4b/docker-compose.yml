@@ -1,0 +1,87 @@
+# ============================================
+# Docker Compose — Gemma 4 26B A4B (it, GGUF) via llama.cpp
+# ============================================
+# Модель: bartowski/google_gemma-4-26B-A4B-it-GGUF (Q4_K_M, ~14 GB)
+# Запуск:
+#   cd /mnt/c/Users/User/Desktop/dublaj
+#   docker compose -f docker3/gemma_e4b/docker-compose.yml up -d
+# ============================================
+
+services:
+  # === Скачивание модели ===
+  model-downloader:
+    image: python:3.12-slim
+    container_name: dublaj-gemma-e4b-downloader
+    restart: "no"
+    env_file:
+      - ../../.env
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-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}
+    volumes:
+      - gemma-models:/models
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install huggingface_hub -q
+        python3 -c "
+        import os, sys
+        token = os.getenv('HF_TOKEN', '')
+        if not token:
+            print('ERROR: HF_TOKEN not set!')
+            sys.exit(1)
+        model_path = '/models/google_gemma-4-26B-A4B-it-Q4_K_M.gguf'
+        if os.path.isfile(model_path):
+            print('Model already downloaded, skipping.')
+            sys.exit(0)
+        print('Downloading bartowski/google_gemma-4-26B-A4B-it-GGUF...')
+        from huggingface_hub import hf_hub_download
+        hf_hub_download(
+            'bartowski/google_gemma-4-26B-A4B-it-GGUF',
+            'google_gemma-4-26B-A4B-it-Q4_K_M.gguf',
+            token=token,
+            local_dir='/models',
+        )
+        print('Model downloaded successfully!')
+        "
+
+  # === llama.cpp сервер ===
+  gemma-e4b:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: dublaj-gemma-e4b
+    ports:
+      - "8600:8080"
+    volumes:
+      - gemma-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --model /models/google_gemma-4-26B-A4B-it-Q4_K_M.gguf
+      --host 0.0.0.0
+      --port 8080
+      --n-gpu-layers 999
+      --ctx-size 8192
+      --threads 4
+      --cont-batching
+      --flash-attn on
+      --reasoning on
+      --reasoning-budget 1024
+    restart: unless-stopped
+    depends_on:
+      model-downloader:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  gemma-models:
+    driver: local

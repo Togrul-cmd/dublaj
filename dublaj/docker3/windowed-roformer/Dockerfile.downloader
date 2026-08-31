@@ -1,0 +1,15 @@
+# ============================================
+# Dockerfile — Downloader модели Windowed RoFormer
+# ============================================
+# Одноразовый контейнер: качает mbr-win10-sink8.ckpt в volume /models.
+# ============================================
+
+FROM python:3.11-slim
+
+RUN pip install --no-cache-dir huggingface_hub
+
+WORKDIR /app
+
+COPY docker3/windowed-roformer/download_model.py /app/download_model.py
+
+CMD ["python", "download_model.py"]
