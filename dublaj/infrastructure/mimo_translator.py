@@ -35,11 +35,18 @@ class MiMoTranslator(ITranslator):
 
     def __init__(
         self,
-        api_key: str = "REMOVED",
+        api_key: str,
         model_name: str = "mimo-v2.5-pro",
         base_url: str = "https://token-plan-sgp.xiaomimimo.com/v1",
         timeout: float = 120.0,
     ) -> None:
+        if not api_key:
+            raise ValueError(
+                "MiMo API key is required — set MIMO_API_KEY in .env. "
+                "(No key is baked into the code; the previous placeholder "
+                "here was a real key that leaked into git history — it has "
+                "been removed and must be treated as compromised.)"
+            )
         self._model_name = model_name
         self._client = OpenAI(
             api_key=api_key,

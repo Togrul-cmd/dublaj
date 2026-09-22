@@ -119,7 +119,11 @@ class LLMTranslator(ITranslator):
         prompt = (
             f"Translate each string from {source_language} to {target_language}.\n"
             f"Keep each translation short and natural for voice-over.\n"
-            f"IMPORTANT: Keep all numbers as digits (e.g. '12' not 'twelve', '2026' not 'two thousand twenty-six').\n"
+            f"CRITICAL: Write ALL numbers as WORDS, never as digits — this text is fed\n"
+            f"directly to a TTS engine, which mispronounces raw digits.\n"
+            f"Examples: '20' → 'twenty', '2022' → 'two thousand twenty-two',\n"
+            f"'3 января' → 'third of January', '100' → 'one hundred', '50%' → 'fifty percent'.\n"
+            f"Write ALL single letters as WORDS too (e.g. 'A' → 'ay').\n"
             f"Return ONLY a JSON array of translations. Same order, same count.\n"
             f"No explanations, no extra text.\n\n"
             f"Input:\n{texts_json}"

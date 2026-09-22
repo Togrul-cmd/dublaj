@@ -16,7 +16,12 @@ services:
     env_file:
       - ../../.env
     environment:
-      - HF_TOKEN=${HF_TOKEN:-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}
+      # No hardcoded fallback token — this MUST come from your local .env.
+      # (A previous version of this file had a real token baked in as the
+      # fallback default. That token leaked into the public repo and git
+      # history and must be treated as compromised — revoke it on
+      # huggingface.co/settings/tokens if you haven't already.)
+      - HF_TOKEN=${HF_TOKEN:?Set HF_TOKEN in your .env file}
     volumes:
       - gemma-models:/models
     command:

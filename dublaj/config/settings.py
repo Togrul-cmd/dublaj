@@ -39,18 +39,18 @@ class Settings(BaseSettings):
 
     # Google Gemini — облачный переводчик от Google (быстрый, качественный)
     gemini_api_key: str = ""                    # API ключ (получить на ai.google.dev)
-    translation_model: str = "gemini-2.0-flash" # Модель Gemini
+    translation_model: str = "gemini-3.6-flash" # Модель Gemini (обновлено с 2.0-flash — 2 поколения новее)
 
     # MiniMax — облачный переводчик (OpenAI-совместимый API)
     minimax_api_key: str = ""                              # API ключ MiniMax
     minimax_base_url: str = "https://api.minimax.io/v1"    # Базовый URL
-    minimax_model: str = "MiniMax-M2.7-highspeed"          # Модель MiniMax
+    minimax_model: str = "MiniMax-M3"                       # Модель MiniMax (обновлено с M2.7-highspeed)
 
     # llama.cpp — локальный перевод через Gemma 4 26B A4B (в Docker на порту 8600)
     # Работает на GPU, не требует интернета, но медленнее облачных
     llamacpp_base_url: str = "http://localhost:8600"
     llamacpp_model: str = "gemma-4-26b-a4b"
-    thinking_enabled: bool = False  # True = модель "думает" перед ответом (chain-of-thought), False = сразу отвечает
+    thinking_enabled: bool = True  # True = модель "думает" перед ответом (chain-of-thought), False = сразу отвечает
 
     # MiMo — облачный перевод от Xiaomi (дешёвый, хороший для азиатских языков)
     mimo_api_key: str = ""

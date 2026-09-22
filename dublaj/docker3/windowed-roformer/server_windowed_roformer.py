@@ -34,6 +34,7 @@ app = FastAPI(title="Windowed RoFormer Separator (WSA)")
 MODEL_PATH = os.getenv("MODEL_PATH", "/models/mbr-win10-sink8.ckpt")
 SAMPLE_RATE = 44100
 CHUNK_SECONDS = 8      # размер чанка инференса (как в main.py репозитория)
+OVERLAP_SECONDS = 1.0  # нахлёст между соседними чанками для кроссфейда на стыках
 BATCH_SIZE = 4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -74,22 +75,49 @@ def load_audio_stereo(file_path: str, sample_rate: int = SAMPLE_RATE) -> torch.T
     return waveform
 
 
+def _trapezoid_window(chunk_samples: int, overlap_samples: int) -> torch.Tensor:
+    """
+    Окно = 1.0 в середине чанка, с линейным нарастанием 0→1 на первых
+    overlap_samples отсчётах и спадом 1→0 на последних overlap_samples.
+    У соседних чанков (шаг = chunk_samples - overlap_samples) сумма окон
+    в зоне нахлёста равна ровно 1.0 → линейный кроссфейд вместо жёсткого
+    разреза, который давал щелчки/разрывы каждые CHUNK_SECONDS.
+    """
+    window = torch.ones(chunk_samples)
+    if overlap_samples > 0:
+        ramp = torch.linspace(0.0, 1.0, overlap_samples)
+        window[:overlap_samples] = ramp
+        window[-overlap_samples:] = ramp.flip(0)
+    return window
+
+
 @torch.inference_mode()
 def demix_vocals(model, mix: torch.Tensor) -> torch.Tensor:
     """
-    Разделение: чанки по CHUNK_SECONDS, батчами, fp16-autocast на GPU.
+    Разделение: перекрывающиеся чанки по CHUNK_SECONDS с шагом
+    (CHUNK_SECONDS - OVERLAP_SECONDS), батчами, fp16-autocast на GPU.
+    Результат собирается overlap-add с трапецеидальным окном — это убирает
+    слышимые щелчки на границах чанков, которые давал прежний код (чанки
+    без нахлёста, просто склеенные встык).
     Возвращает vocals-тензор [2, samples] (исходная длина).
     """
     mix = torch.tensor(mix, dtype=torch.float32)
     chunk_samples = CHUNK_SECONDS * SAMPLE_RATE
+    overlap_samples = min(int(OVERLAP_SECONDS * SAMPLE_RATE), chunk_samples // 2)
+    step_samples = chunk_samples - overlap_samples
     audio_samples = mix.shape[1]
-    full_samples = int(np.ceil(audio_samples / chunk_samples) * chunk_samples)
+
+    if audio_samples <= chunk_samples:
+        full_samples = chunk_samples
+    else:
+        n_steps = int(np.ceil((audio_samples - chunk_samples) / step_samples))
+        full_samples = chunk_samples + n_steps * step_samples
     if full_samples > audio_samples:
         pad = full_samples - audio_samples
         mix = torch.nn.functional.pad(mix, (0, pad), mode="constant", value=0)
 
-    chunks = mix.unfold(dimension=1, size=chunk_samples, step=chunk_samples)
-    chunks = chunks.permute(1, 0, 2)
+    chunks = mix.unfold(dimension=1, size=chunk_samples, step=step_samples)
+    chunks = chunks.permute(1, 0, 2)  # [num_chunks, channels, chunk_samples]
     clips_num = chunks.shape[0]
 
     outputs = []
@@ -102,9 +130,28 @@ def demix_vocals(model, mix: torch.Tensor) -> torch.Tensor:
         outputs.append(out.float().cpu())
         pointer += BATCH_SIZE
 
-    outputs = torch.cat(outputs, dim=0)
-    channels = outputs.shape[1]
-    vocals = outputs.permute(1, 0, 2).reshape(channels, -1)
+    outputs = torch.cat(outputs, dim=0)  # [num_chunks, channels, chunk_samples]
+    out_channels = outputs.shape[1]
+
+    base_window = _trapezoid_window(chunk_samples, overlap_samples)
+    total_len = (clips_num - 1) * step_samples + chunk_samples
+    result = torch.zeros(out_channels, total_len)
+    weight = torch.zeros(total_len)
+
+    for i in range(clips_num):
+        window = base_window.clone()
+        # Первый чанк: нечего кроссфейдить слева → не спадаем в начале.
+        if i == 0 and overlap_samples > 0:
+            window[:overlap_samples] = 1.0
+        # Последний чанк: нечего кроссфейдить справа → не спадаем в конце.
+        if i == clips_num - 1 and overlap_samples > 0:
+            window[-overlap_samples:] = 1.0
+
+        start = i * step_samples
+        result[:, start:start + chunk_samples] += outputs[i] * window
+        weight[start:start + chunk_samples] += window
+
+    vocals = result / weight.clamp_min(1e-8)
     return vocals[:, :audio_samples]
 
 

@@ -101,7 +101,7 @@ WHISPER_ENDPOINT=/v1/audio/transcriptions
 # --- Translation (выберите провайдер) ---
 TRANSLATION_PROVIDER=gemini
 GEMINI_API_KEY=ВАШ_GEMINI_API_KEY
-TRANSLATION_MODEL=gemini-2.5-flash
+TRANSLATION_MODEL=gemini-3.6-flash
 
 # --- OmniVoice TTS (Docker, порт 8200) ---
 OMNIVOICE_URL=http://localhost:8200
@@ -527,8 +527,8 @@ curl -X POST "http://localhost:8000/api/v1/dubbing/intonation/seedvc-v2/speaker-
 
 | Провайдер | Модель | Тип | Настройка в `.env` |
 |-----------|--------|-----|-------------------|
-| **Gemini** | gemini-2.5-flash | Облачный (Google) | `TRANSLATION_PROVIDER=gemini` |
-| **MiniMax** | MiniMax-M2.7-highspeed | Облачный | `TRANSLATION_PROVIDER=minimax` |
+| **Gemini** | gemini-3.6-flash | Облачный (Google) | `TRANSLATION_PROVIDER=gemini` |
+| **MiniMax** | MiniMax-M3 | Облачный | `TRANSLATION_PROVIDER=minimax` |
 | **llama.cpp** | gemma-e4b | Локальный (Docker) | `TRANSLATION_PROVIDER=llamacpp` |
 | **MiMo** | mimo-v2.5-pro | Облачный (Xiaomi) | `TRANSLATION_PROVIDER=mimo` |
 
